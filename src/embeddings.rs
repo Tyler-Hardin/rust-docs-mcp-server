@@ -57,12 +57,11 @@ pub async fn generate_embeddings(
         .and_then(|lim| lim.trim().parse().ok())
         .unwrap_or(8000);
 
-    let results = stream::iter(documents.iter().enumerate())
+    let results = stream::iter(documents.iter().enumerate().map(|(i, d)| (i, d.clone())).collect::<Vec<_>>())
         .map(|(index, doc)| {
             // Clone client, model, doc, and Arc<BPE> for the async block
             let client = client.clone();
             let model = model.to_string();
-            let doc = doc.clone();
             let bpe = Arc::clone(&bpe); // Clone the Arc pointer
 
             async move {
