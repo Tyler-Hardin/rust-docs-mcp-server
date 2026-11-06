@@ -25,7 +25,6 @@
         "x86_64-linux"
         "aarch64-linux"
         "aarch64-darwin"
-        "x86_64-darwin"
       ];
       perSystem =
         {
@@ -44,10 +43,6 @@
             src = craneLib.cleanCargoSource ./.;
             buildInputs = with pkgs; [
               openssl
-            ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
-              # Additional darwin specific inputs
-              pkgs.darwin.apple_sdk.frameworks.Security
-              pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
             ];
             nativeBuildInputs = with pkgs; [
               pkg-config
