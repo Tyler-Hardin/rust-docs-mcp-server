@@ -12,7 +12,11 @@
     inputs@{ flake-parts, nixpkgs, crane, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [
-        inputs.dev-environments.flakeModules.rust
+        # NOTE: dev-environments' rust module is intentionally not used: it puts
+        # `pkgs.rustup` in the shell and runs `rustup default stable`, which
+        # resolves against the caller's $HOME/.rustup (and the network) instead
+        # of the flake's pinned nixpkgs. The toolchain is provided below from
+        # `pkgs` so `nix develop` is hermetic and matches `nix build`.
         inputs.dev-environments.flakeModules.golang
         inputs.dev-environments.flakeModules.node
         inputs.dev-environments.flakeModules.typst
@@ -79,21 +83,11 @@
             # extraPackages = [ ];
           };
 
-          # Rust Development Environment Options
+          # Rust Development Environment
           # ----------------------------------
-          # enable: boolean - Enable/disable the Rust environment
-          # rustVersion: enum - Rust toolchain ("stable", "beta", "nightly") (default: "stable")
-          # withTools: list of strings - Additional Rust tools to include (converted to cargo-*)
-          # extraPackages: list of packages - Additional packages to include
-          # ide.type: enum - IDE preference ("rust-rover", "vscode", "none") (default: "none")
-          rust-dev = {
-            enable = true;
-            rustVersion = "stable";
-            # Example configuration:
-            # withTools = [ ];  # Will be prefixed with cargo-
-            extraPackages = [ pkgs.openssl pkgs.openssl.dev pkgs.pkg-config ]; # Add openssl libs, dev libs, and pkg-config
-            # ide.type = "none";
-          };
+          # The toolchain is supplied by the flake's pinned nixpkgs (see
+          # devShells.default below) rather than rustup, so the shell does not
+          # depend on the caller's ~/.rustup or on network access.
 
           # Node.js Development Environment Options
           # -------------------------------------
@@ -120,10 +114,33 @@
           };
           # Create the combined shell
           devShells.default = pkgs.mkShell {
-            buildInputs = nixpkgs.lib.flatten (nixpkgs.lib.attrValues config.env-packages ++ [ ]);
+            buildInputs = nixpkgs.lib.flatten (nixpkgs.lib.attrValues config.env-packages ++ [ ])
+              ++ (with pkgs; [
+                rustc
+                cargo
+                rustfmt
+                clippy
+                rust-analyzer
+                llvm
+                cargo-tarpaulin
+                cargo-release
+                cargo-machete
+                pkg-config
+                openssl
+                openssl.dev
+                perl
+              ]);
             # Combine existing hooks with new exports for OpenSSL
             shellHook = ''
               ${nixpkgs.lib.concatStringsSep "\n" (nixpkgs.lib.attrValues config.env-hooks)}
+
+              # Keep cargo state out of the caller's ~/.cargo. cargo prepends
+              # $CARGO_HOME/bin to PATH when resolving subcommands, so stale or
+              # foreign binaries installed there (e.g. rustup shims linked
+              # against a garbage-collected glibc) shadow the tools this shell
+              # provides and fail with "could not execute process".
+              export CARGO_HOME="''${XDG_CACHE_HOME:-$HOME/.cache}/rustdocs-mcp-server/cargo"
+              mkdir -p "$CARGO_HOME"
 
               # Export paths for openssl-sys build script
               export OPENSSL_DIR="${pkgs.openssl.out}"
